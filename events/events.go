@@ -66,7 +66,7 @@ func (em *EventManager) Run() {
 					select {
 					case s.outgoing <- op.evt:
 					default:
-						log.Error("event overflow")
+						log.Warnf("event overflow (%d)", len(s.outgoing))
 					}
 				}
 			}
