@@ -2710,10 +2710,10 @@ func (t *RichtextFacet_Link) MarshalCBOR(w io.Writer) error {
 		return err
 	}
 
-	if err := cw.WriteMajorTypeHeader(cbg.MajTextString, uint64(len("app.bsky.richtext.facet"))); err != nil {
+	if err := cw.WriteMajorTypeHeader(cbg.MajTextString, uint64(len("app.bsky.richtext.facet#link"))); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(w, string("app.bsky.richtext.facet")); err != nil {
+	if _, err := io.WriteString(w, string("app.bsky.richtext.facet#link")); err != nil {
 		return err
 	}
 	return nil
@@ -2835,10 +2835,10 @@ func (t *RichtextFacet_Mention) MarshalCBOR(w io.Writer) error {
 		return err
 	}
 
-	if err := cw.WriteMajorTypeHeader(cbg.MajTextString, uint64(len("app.bsky.richtext.facet"))); err != nil {
+	if err := cw.WriteMajorTypeHeader(cbg.MajTextString, uint64(len("app.bsky.richtext.facet#mention"))); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(w, string("app.bsky.richtext.facet")); err != nil {
+	if _, err := io.WriteString(w, string("app.bsky.richtext.facet#mention")); err != nil {
 		return err
 	}
 	return nil
