@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unsafe"
 
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
@@ -18,19 +19,29 @@ import (
 // chunks of 2-bits. Eg, a leading 0x00 byte is 4 "zeros".
 // Typescript: leadingZerosOnHash(key, fanout) -> number
 func leadingZerosOnHash(key string) int {
-	k := []byte(key)
-	hv := sha256.Sum256(k)
+	var b []byte
+	if len(key) > 0 {
+		b = unsafe.Slice(unsafe.StringData(key), len(key))
+	}
+	return leadingZerosOnHashBytes(b)
+}
 
-	total := 0
-	for i := 0; i < len(hv); i++ {
-		if hv[i] == 0x00 {
+func leadingZerosOnHashBytes(key []byte) (total int) {
+	hv := sha256.Sum256(key)
+	for _, b := range hv {
+		if b&0xC0 != 0 {
+			// Common case. No leading pair of zero bits.
+			break
+		}
+		if b == 0x00 {
 			total += 4
 			continue
-		} else if hv[i]&0xFC == 0x00 {
+		}
+		if b&0xFC == 0x00 {
 			total += 3
-		} else if hv[i]&0xF0 == 0x00 {
+		} else if b&0xF0 == 0x00 {
 			total += 2
-		} else if hv[i]&0xC0 == 0x00 {
+		} else {
 			total += 1
 		}
 		break
@@ -39,8 +50,8 @@ func leadingZerosOnHash(key string) int {
 }
 
 // Typescript: layerForEntries(entries, fanout) -> (number?)
-func layerForEntries(entries []NodeEntry) int {
-	var firstLeaf NodeEntry
+func layerForEntries(entries []nodeEntry) int {
+	var firstLeaf nodeEntry
 	for _, e := range entries {
 		if e.isLeaf() {
 			firstLeaf = e
@@ -48,7 +59,7 @@ func layerForEntries(entries []NodeEntry) int {
 		}
 	}
 
-	if firstLeaf.Kind == EntryUndefined {
+	if firstLeaf.Kind == entryUndefined {
 		return -1
 	}
 
@@ -56,13 +67,13 @@ func layerForEntries(entries []NodeEntry) int {
 }
 
 // Typescript: deserializeNodeData(storage, data, layer)
-func deserializeNodeData(ctx context.Context, cst cbor.IpldStore, nd *NodeData, layer int) ([]NodeEntry, error) {
-	entries := []NodeEntry{}
+func deserializeNodeData(ctx context.Context, cst cbor.IpldStore, nd *nodeData, layer int) ([]nodeEntry, error) {
+	entries := []nodeEntry{}
 	if nd.Left != nil {
 		// Note: like Typescript, this is actually a lazy load
-		entries = append(entries, NodeEntry{
-			Kind: EntryTree,
-			Tree: NewMST(cst, *nd.Left, nil, layer-1),
+		entries = append(entries, nodeEntry{
+			Kind: entryTree,
+			Tree: createMST(cst, *nd.Left, nil, layer-1),
 		})
 	}
 
@@ -77,16 +88,16 @@ func deserializeNodeData(ctx context.Context, cst cbor.IpldStore, nd *NodeData, 
 			return nil, err
 		}
 
-		entries = append(entries, NodeEntry{
-			Kind: EntryLeaf,
+		entries = append(entries, nodeEntry{
+			Kind: entryLeaf,
 			Key:  string(key),
 			Val:  e.Val,
 		})
 
 		if e.Tree != nil {
-			entries = append(entries, NodeEntry{
-				Kind: EntryTree,
-				Tree: NewMST(cst, *e.Tree, nil, layer-1),
+			entries = append(entries, nodeEntry{
+				Kind: entryTree,
+				Tree: createMST(cst, *e.Tree, nil, layer-1),
 				Key:  string(key),
 			})
 		}
@@ -97,8 +108,8 @@ func deserializeNodeData(ctx context.Context, cst cbor.IpldStore, nd *NodeData, 
 }
 
 // Typescript: serializeNodeData(entries) -> NodeData
-func serializeNodeData(entries []NodeEntry) (*NodeData, error) {
-	var data NodeData
+func serializeNodeData(entries []nodeEntry) (*nodeData, error) {
+	var data nodeData
 
 	i := 0
 	if len(entries) > 0 && entries[0].isTree() {
@@ -143,7 +154,7 @@ func serializeNodeData(entries []NodeEntry) (*NodeData, error) {
 		}
 
 		prefixLen := countPrefixLen(lastKey, leaf.Key)
-		data.Entries = append(data.Entries, TreeEntry{
+		data.Entries = append(data.Entries, treeEntry{
 			PrefixLen: int64(prefixLen),
 			KeySuffix: []byte(leaf.Key)[prefixLen:],
 			Val:       leaf.Val,
@@ -180,7 +191,7 @@ func countPrefixLen(a, b string) int {
 // both computes *and* persists a tree entry; this is different from typescript
 // implementation
 // Typescript: cidForEntries(entries) -> CID
-func cidForEntries(ctx context.Context, entries []NodeEntry, cst cbor.IpldStore) (cid.Cid, error) {
+func cidForEntries(ctx context.Context, entries []nodeEntry, cst cbor.IpldStore) (cid.Cid, error) {
 	nd, err := serializeNodeData(entries)
 	if err != nil {
 		return cid.Undef, fmt.Errorf("serializing new entries: %w", err)
